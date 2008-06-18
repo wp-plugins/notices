@@ -4,8 +4,9 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		0.1
+	Version:		0.2
 	Changes:		0.1 - Initial version.
+					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -16,6 +17,8 @@ if(!is_array($notices_options)) {
 	$notices_options = array(
 		'title' => 'Notices',
 		'credit' => 'on',
+		'speed' => '4',
+		'pause' => 'on',
 		'limit' => '3'
 	);
 	update_option('notices_widget', $notices_options);
@@ -43,15 +46,14 @@ function get_ticker_content($limit = '')
 {
 	global $wpdb, $table_prefix;
 
-	if(empty($limit)) {
-		$options = get_option('notices_widget');
-		$limit = $options['limit'];
-	}
+	$options = get_option('notices_widget');
+
+	if(empty($limit)) $limit = $options['limit'];
 
 	$output = '';
 	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) order by notice_date DESC limit {$limit}");
 	if($notices) {
-		$output = '<marquee class="ticker">';
+		$output = '<marquee class="ticker" scrollamount="' . $options['speed'] . '"' . ($options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
 		$dots = false;
 		foreach($notices as $notice) {
 			if($dots) $output .= ' &nbsp;&nbsp;&nbsp; ... &nbsp;&nbsp;&nbsp; ';
@@ -118,18 +120,9 @@ function manage_notices()
 
 	$msg = '';
 
-	if(isset($_POST['option-submit'])) {
-		$options_update = array (
-			'credit' => ($_POST['credit'] == 'on' ? 'on' : 'off'),
-			'limit' => $_POST['limit']
-		);
-		update_option('notices_widget', $options_update);
-		$msg = 'Options updated';
-	}
-
 	if(isset($_POST['submit'])) {
-		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (now(), '" . $_POST['notice'] . "', '" . $_POST['valid'] . "')");
 		$msg = 'Notice added';
+		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (now(), '" . $_POST['notice'] . "', '" . $_POST['valid'] . "')");
 	}
 
 	if(!empty($_GET['act'])) {
@@ -148,8 +141,6 @@ function manage_notices()
 
 	// Output message.
 	if(!empty($msg)) echo "<div id='message' class='updated fade'><p>{$msg}.</p></div>";
-
-	$options = get_option('notices_widget');
 ?>
 	<script language="Javascript">
 		function set_input_values(num)
@@ -199,13 +190,53 @@ function manage_notices()
 			?></tbody>
 		</table>
 
+		<h3>Notices Usage</h3>
+		<ul>
+			<li>Define notice text above. Note, HTML is allowed but be careful to avoid <code>"</code> (double quote characters).</li>
+			<li>Use the <em>Notices</em> widget (<em>Design &raquo; Widgets</em>) to show a sidebar widget that scrolls a chosen number of the most recent notices.</li>
+			<li>Or use this <code>&lt;?php put_ticker( [<u>true</u> | false] ); ?&gt;</code> in your template files.  Where <code>true</code> or <code>false</code> determines if the ticker should be hidden when there are no notices to scroll.  For example, <code>&lt;?php put_ticker(false); ?&gt;</code> only shows the ticker when there are notices to scroll, whereas <code>&lt;?php put_ticker(true); ?&gt;</code> always shows the ticker - even an empty one.</li>
+		</ul>
+	</div>
+<?php
+}
+
+
+// Manage options.
+function notices_options_page()
+{
+	if(isset($_POST['option-submit'])) {
+		$options_update = array (
+			'credit' => ($_POST['credit'] == 'on' ? 'on' : 'off'),
+			'speed' => $_POST['speed'],
+			'pause' => $_POST['pause'],
+			'limit' => $_POST['limit']
+		);
+		update_option('notices_widget', $options_update);
+	}
+	$options = get_option('notices_widget');
+?>
+	<div class="wrap">
+		<h2>Notices Options</h2>
+		Control the behaviour of the Notices ticker.<br />
+		Please visit the author's site, <a href='http://www.sterling-adventures.co.uk/' title='Sterling Adventures'>Sterling Adventures</a>, and say "Hi"...
+
 		<h3>Notice Options</h3>
-		<form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>?page=manage-notices&updated=true">
+		<form method="post" action="<?php echo $_SERVER['PHP_SELF'] . '?page=' . basename(__FILE__); ?>&updated=true">
 			<table class='form-table'>
 				<tr>
 					<td>Limit:</td>
 					<td><input type='text' name='limit' value='<?php echo $options['limit']; ?>' size='3' /></td>
 					<td><small>The maximum number of most recently updated notices to show.</small></td>
+				</tr>
+				<tr>
+					<td>Speed:</td>
+					<td><input type='text' name='speed' value='<?php echo $options['speed']; ?>' size='3' /></td>
+					<td><small>The speed of the ticker tape, smaller = slower.</small></td>
+				</tr>
+				<tr>
+					<td>Pause:</td>
+					<td><input type="checkbox" name="pause" <?php echo $options['pause'] == 'on' ? 'checked' : ''; ?> /></td>
+					<td><small>Pause the ticker's scrolling on <code>mouseover</code>.</small></td>
 				</tr>
 				<tr>
 					<td>Credit:</td>
@@ -215,13 +246,6 @@ function manage_notices()
 			</table>
 			<p class="submit"><input type="submit" name="option-submit" value="Update Notice Options" /></p>
 		</form>
-
-		<h3>Notices Usage</h3>
-		<ul>
-		<li>Define notice text above. Note, HTML is allowed but be careful to avoid <code>"</code> (double quote characters).</li>
-		<li>Use the <em>Notices</em> widget (<em>Design &raquo; Widgets</em>) to show a sidebar widget that scrolls a chosen number of the most recent notices.</li>
-		<li>Or use this <code>&lt;?php put_ticker( [<u>true</u> | false] ); ?&gt;</code> in your template files.  Where <code>true</code> or <code>false</code> determines if the ticker should be hidden when there are no notices to scroll.  For example, <code>&lt;?php put_ticker(false); ?&gt;</code> only shows the ticker when there are notices to scroll, whereas <code>&lt;?php put_ticker(true); ?&gt;</code> always shows the ticker - even an empty one.</li>
-		</ul>
 	</div>
 <?php
 }
@@ -240,6 +264,9 @@ function manage_notices_menu()
 {
 	if(function_exists('add_submenu_page')) {
 		add_management_page('Manage Notices', 'Notices', 2, 'manage-notices', 'manage_notices');
+	}
+	if(function_exists('add_options_page')) {
+		add_options_page('Notice Options', 'Notices', 8, basename(__FILE__), 'notices_options_page');
 	}
 }
 
