@@ -4,9 +4,10 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		0.2
+	Version:		0.3
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
+					0.3 - Error with management menu access fixed.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -263,7 +264,9 @@ function notices_footer()
 function manage_notices_menu()
 {
 	if(function_exists('add_submenu_page')) {
-		add_management_page('Manage Notices', 'Notices', 2, 'manage-notices', 'manage_notices');
+		if(current_user_can('manage_notices')) {
+			add_management_page('Manage Notices', 'Notices', 2, 'manage-notices', 'manage_notices');
+		}
 	}
 	if(function_exists('add_options_page')) {
 		add_options_page('Notice Options', 'Notices', 8, basename(__FILE__), 'notices_options_page');
