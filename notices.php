@@ -4,10 +4,11 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		0.3
+	Version:		0.4
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
+					0.4 - Added ticker direction, with thanks to Shaunak Sontakke.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -20,7 +21,8 @@ if(!is_array($notices_options)) {
 		'credit' => 'on',
 		'speed' => '4',
 		'pause' => 'on',
-		'limit' => '3'
+		'limit' => '3',
+		'direction' => 'LEFT'
 	);
 	update_option('notices_widget', $notices_options);
 }
@@ -54,7 +56,7 @@ function get_ticker_content($limit = '')
 	$output = '';
 	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) order by notice_date DESC limit {$limit}");
 	if($notices) {
-		$output = '<marquee class="ticker" scrollamount="' . $options['speed'] . '"' . ($options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
+		$output = '<marquee direction="' . $options['direction'] . '" class="ticker" scrollamount="' . $options['speed'] . '"' . ($options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
 		$dots = false;
 		foreach($notices as $notice) {
 			if($dots) $output .= ' &nbsp;&nbsp;&nbsp; ... &nbsp;&nbsp;&nbsp; ';
@@ -210,7 +212,8 @@ function notices_options_page()
 			'credit' => ($_POST['credit'] == 'on' ? 'on' : 'off'),
 			'speed' => $_POST['speed'],
 			'pause' => $_POST['pause'],
-			'limit' => $_POST['limit']
+			'limit' => $_POST['limit'],
+			'direction' => $_POST['direction']			
 		);
 		update_option('notices_widget', $options_update);
 	}
@@ -233,6 +236,16 @@ function notices_options_page()
 					<td>Speed:</td>
 					<td><input type='text' name='speed' value='<?php echo $options['speed']; ?>' size='3' /></td>
 					<td><small>The speed of the ticker tape, smaller = slower.</small></td>
+				</tr>
+				<tr>
+					<td>Direction:</td>
+					<td><select name="direction">
+						<option value="LEFT" <?php if($options['direction'] == "LEFT") echo "selected"; ?> >Left</option>
+						<option value="RIGHT" <?php if($options['direction'] == "RIGHT") echo "selected"; ?> >Right</option>
+						<option value="UP" <?php if($options['direction'] == "UP") echo "selected"; ?> >Up</option>
+						<option value="DOWN" <?php if($options['direction'] == "DOWN") echo "selected"; ?> >Down</option>
+					</select></td>
+					<td><small>Set the ticker direction.</small></td>
 				</tr>
 				<tr>
 					<td>Pause:</td>
