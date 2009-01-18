@@ -4,11 +4,13 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		0.4
+	Version:		2.1
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
 					0.4 - Added ticker direction, with thanks to Shaunak Sontakke.
+					2.0 - Now has fade-in-out efect - many thanks to Alex Gonzalez-Vinas for the idea and motivation.
+					2.1 - Javascript uses an object to allow multiple tickers (i.e. widget and paged).
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -44,25 +46,43 @@ function activate_notices()
 }
 
 
-// Help function to generate ticker output...
-function get_ticker_content($limit = '')
+// Get notices from database.
+function get_seperated_notices($sep)
 {
-	global $wpdb, $table_prefix;
+	global $wpdb, $table_prefix, $notices_options;
 
-	$options = get_option('notices_widget');
-
-	if(empty($limit)) $limit = $options['limit'];
+	$limit = $notices_options['limit'];
 
 	$output = '';
 	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) order by notice_date DESC limit {$limit}");
 	if($notices) {
-		$output = '<marquee direction="' . $options['direction'] . '" class="ticker" scrollamount="' . $options['speed'] . '"' . ($options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
 		$dots = false;
 		foreach($notices as $notice) {
-			if($dots) $output .= ' &nbsp;&nbsp;&nbsp; ... &nbsp;&nbsp;&nbsp; ';
+			if($dots) $output .= $sep;
 			$dots = true;
 			$output .= '&laquo; ' . $notice->notice . ' &raquo;';
 		}
+	}
+	return $output;
+}
+
+
+// Help function to generate ticker output...
+function get_ticker_content($name)
+{
+	global $notices_options;
+
+	if($notices_options['direction'] == 'FADE') {
+		$output  = "<div id='$name' class='ticker'></div>\n";
+		$output .= "<script language='Javascript'>\n";
+		$output .= "tick_" . $name . " = new NoticesTicker('" . $name . "', " . (int)($notices_options['speed']) * 1000 . ", " . ($notices_options['pause'] == 'on' ? 'true' : 'false') . ");\n";
+		$output .= "tick_" . $name . '.Init(["' . get_seperated_notices('", "') . "\"]);\n";
+		$output .= "</script>" . "\n";
+
+	}
+	else {
+		$output  = '<marquee direction="' . $notices_options['direction'] . '" class="ticker" scrollamount="' . $notices_options['speed'] . '"' . ($notices_options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
+		$output .= get_seperated_notices(' &nbsp;&nbsp;&nbsp; ... &nbsp;&nbsp;&nbsp; ');
 		$output .= '</marquee>';
 	}
 	return $output;
@@ -78,34 +98,33 @@ function notices_widget_init()
 	// Notice widget.
 	function notices_widget($args)
 	{
+		global $notices_options;
 		extract($args);
 
-		// Get the widget control value.
-		$options = get_option('notices_widget');
-
-		echo $before_widget, $before_title, $options['title'], $after_title;
-		echo get_ticker_content($options['limit']);
+		echo $before_widget, $before_title, $notices_options['title'], $after_title;
+		echo get_ticker_content('ticker_widget');
 		echo $after_widget;
 	}
 
 	// Control for notices widget.
 	function notices_widget_control()
 	{
-		$options = $newoptions = get_option('notices_widget');
+		global $notices_options;
+		$newoptions = $notices_options;
 
 		// This is for handing the control form submission.
 		if($_POST['notices-submit']) {
 			$newoptions['title'] = strip_tags(stripslashes($_POST['notices-title']));
 			$newoptions['limit'] = strip_tags(stripslashes($_POST['notices-limit']));
-			if($options != $newoptions) {
+			if($notices_options != $newoptions) {
 				update_option('notices_widget', $newoptions);
-				$options = $newoptions;
+				$notices_options = $newoptions;
 			}
 		}
 
 		// Control form HTML for editing options. ?>
-		<label for="notices-title" style="line-height: 35px; display: block;">Title <input type="text" name="notices-title" value="<?php echo $options['title']; ?>" /></label>
-		<label for="notices-limit" style="line-height: 35px; display: block;">Limit <input type="text" name="notices-limit" value="<?php echo $options['limit']; ?>" /></label>
+		<label for="notices-title" style="line-height: 35px; display: block;">Title <input type="text" name="notices-title" value="<?php echo $notices_options['title']; ?>" /></label>
+		<label for="notices-limit" style="line-height: 35px; display: block;">Limit <input type="text" name="notices-limit" value="<?php echo $notices_options['limit']; ?>" /></label>
 		<input type="hidden" name="notices-submit" value="1" />
 	<?php }
 
@@ -195,8 +214,10 @@ function manage_notices()
 
 		<h3>Notices Usage</h3>
 		<ul>
-			<li>Define notice text above. Note, HTML is allowed but be careful to avoid <code>"</code> (double quote characters).</li>
-			<li>Use the <em>Notices</em> widget (<em>Design &raquo; Widgets</em>) to show a sidebar widget that scrolls a chosen number of the most recent notices.</li>
+			<li>Define notice text above.  HTML is allowed.</li>
+			<li>A valid number of days of 0 makes the notice show indefinitely.</li>
+			<li><b>Be careful to avoid <code>"</code> (double quote characters), use <code>'</code> (single quotes) instead</b>.</li>
+			<li>Use the <em>Notices</em> widget (<em>Appearance &raquo; Widgets</em>) to show a sidebar widget that shows a chosen number of the most recent notices.</li>
 			<li>Or use this <code>&lt;?php put_ticker( [<u>true</u> | false] ); ?&gt;</code> in your template files.  Where <code>true</code> or <code>false</code> determines if the ticker should be hidden when there are no notices to scroll.  For example, <code>&lt;?php put_ticker(false); ?&gt;</code> only shows the ticker when there are notices to scroll, whereas <code>&lt;?php put_ticker(true); ?&gt;</code> always shows the ticker - even an empty one.</li>
 		</ul>
 	</div>
@@ -207,6 +228,8 @@ function manage_notices()
 // Manage options.
 function notices_options_page()
 {
+	global $notices_options;
+
 	if(isset($_POST['option-submit'])) {
 		$options_update = array (
 			'credit' => ($_POST['credit'] == 'on' ? 'on' : 'off'),
@@ -217,7 +240,7 @@ function notices_options_page()
 		);
 		update_option('notices_widget', $options_update);
 	}
-	$options = get_option('notices_widget');
+	$notices_options = get_option('notices_widget');
 ?>
 	<div class="wrap">
 		<h2>Notices Options</h2>
@@ -229,32 +252,33 @@ function notices_options_page()
 			<table class='form-table'>
 				<tr>
 					<td>Limit:</td>
-					<td><input type='text' name='limit' value='<?php echo $options['limit']; ?>' size='3' /></td>
+					<td><input type='text' name='limit' value='<?php echo $notices_options['limit']; ?>' size='3' /></td>
 					<td><small>The maximum number of most recently updated notices to show.</small></td>
 				</tr>
 				<tr>
 					<td>Speed:</td>
-					<td><input type='text' name='speed' value='<?php echo $options['speed']; ?>' size='3' /></td>
-					<td><small>The speed of the ticker tape, smaller = slower.</small></td>
+					<td><input type='text' name='speed' value='<?php echo $notices_options['speed']; ?>' size='3' /></td>
+					<td><small>The speed of the ticker tape (smaller = slower).  Or for fades, the number of seconds between notices.</small></td>
 				</tr>
 				<tr>
-					<td>Direction:</td>
+					<td>Behaviour:</td>
 					<td><select name="direction">
-						<option value="LEFT" <?php if($options['direction'] == "LEFT") echo "selected"; ?> >Left</option>
-						<option value="RIGHT" <?php if($options['direction'] == "RIGHT") echo "selected"; ?> >Right</option>
-						<option value="UP" <?php if($options['direction'] == "UP") echo "selected"; ?> >Up</option>
-						<option value="DOWN" <?php if($options['direction'] == "DOWN") echo "selected"; ?> >Down</option>
+						<option value="LEFT" <?php if($notices_options['direction'] == "LEFT") echo "selected"; ?> >Left</option>
+						<option value="RIGHT" <?php if($notices_options['direction'] == "RIGHT") echo "selected"; ?> >Right</option>
+						<option value="UP" <?php if($notices_options['direction'] == "UP") echo "selected"; ?> >Up</option>
+						<option value="DOWN" <?php if($notices_options['direction'] == "DOWN") echo "selected"; ?> >Down</option>
+						<option value="FADE" <?php if($notices_options['direction'] == "FADE") echo "selected"; ?> >Fade</option>
 					</select></td>
-					<td><small>Set the ticker direction.</small></td>
+					<td><small>Set the behaviour (left, right, up, down or fade).</small></td>
 				</tr>
 				<tr>
 					<td>Pause:</td>
-					<td><input type="checkbox" name="pause" <?php echo $options['pause'] == 'on' ? 'checked' : ''; ?> /></td>
+					<td><input type="checkbox" name="pause" <?php echo $notices_options['pause'] == 'on' ? 'checked' : ''; ?> /></td>
 					<td><small>Pause the ticker's scrolling on <code>mouseover</code>.</small></td>
 				</tr>
 				<tr>
 					<td>Credit:</td>
-					<td><input type="checkbox" name="credit" <?php echo $options['credit'] == 'on' ? 'checked' : ''; ?> /></td>
+					<td><input type="checkbox" name="credit" <?php echo $notices_options['credit'] == 'on' ? 'checked' : ''; ?> /></td>
 					<td><small>Includes an invisible credit to <a href='http://www.sterling-adventures.co.uk/' title='Sterling Adventures'>Sterling Adventures</a></small></td>
 				</tr>
 			</table>
@@ -268,8 +292,9 @@ function notices_options_page()
 // Add credit.
 function notices_footer()
 {
-	$options = get_option('notices_widget');
-	if($options['credit'] == 'on') echo '<div id="notices_footer" style="display: none;"><a href="http://www.sterling-adventures.co.uk/blog/">Adventures</a></div>';
+	global $notices_options;
+
+	if($notices_options['credit'] == 'on') echo '<div id="notices_footer" style="display: none;"><a href="http://www.sterling-adventures.co.uk/blog/">Adventures</a></div>';
 }
 
 
@@ -287,17 +312,22 @@ function manage_notices_menu()
 }
 
 
-// Output CSS styles for notices in the header...
+// Output header (CSS styles, Javascript) for notices in the header.
 function add_notice_styles()
 {
+	global $notices_options;
+
 	printf("<link rel='stylesheet' media='screen' type='text/css' href='%s/wp-content/plugins/notices/notices.css' />\n", get_settings('home'));
+	if($notices_options['direction'] == 'FADE') {
+		printf("<script type='text/javascript' src='%s/wp-content/plugins/notices/notices.js'></script>\n", get_settings('home'));
+	}
 }
 
 
-// Output the ticker out for use within template files.
+// Output the ticker for use within template files.
 function put_ticker($show = true)
 {
-	$ticker = get_ticker_content();
+	$ticker = get_ticker_content('ticker');
 	if((!$show && !empty($ticker)) || $show) {
 		print("<div class='ticker-div'>");
 		echo $ticker;
