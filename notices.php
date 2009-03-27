@@ -4,13 +4,14 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		2.1
+	Version:		3.0
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
 					0.4 - Added ticker direction, with thanks to Shaunak Sontakke.
 					2.0 - Now has fade-in-out efect - many thanks to Alex Gonzalez-Vinas for the idea and motivation.
 					2.1 - Javascript uses an object to allow multiple tickers (i.e. widget and paged).
+					3.0 - Option to 'tick' recent posts.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -46,6 +47,22 @@ function activate_notices()
 }
 
 
+// Get post titles for notices ticker.
+function get_recent_posts($sep)
+{
+	global $notices_options;
+	$result = '';
+	$dots = false;
+	$posts = get_posts("numberposts={$notices_options['limit']}");
+	foreach($posts as $post) {
+		if($dots) $result .= $sep;
+		$result .= $post->post_title;
+		$dots = true;
+	}
+	return $result;
+}
+
+
 // Get notices from database.
 function get_seperated_notices($sep)
 {
@@ -54,20 +71,30 @@ function get_seperated_notices($sep)
 	$limit = $notices_options['limit'];
 
 	$output = '';
+	$dots = false;
+
+	if($notices_options['recent'] == 'B') $output .= get_recent_posts($sep);
+	if(!empty($output)) $dots = true;
+
 	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) order by notice_date DESC limit {$limit}");
 	if($notices) {
-		$dots = false;
 		foreach($notices as $notice) {
 			if($dots) $output .= $sep;
 			$dots = true;
 			$output .= '&laquo; ' . $notice->notice . ' &raquo;';
 		}
 	}
+
+	if($notices_options['recent'] == 'A') {
+		$posts = get_recent_posts($sep);
+		if(!empty($output) && !empty($posts)) $output .= $sep . $posts;
+	}
+
 	return $output;
 }
 
 
-// Help function to generate ticker output...
+// Helper function to generate ticker output...
 function get_ticker_content($name)
 {
 	global $notices_options;
@@ -78,7 +105,6 @@ function get_ticker_content($name)
 		$output .= "tick_" . $name . " = new NoticesTicker('" . $name . "', " . (int)($notices_options['speed']) * 1000 . ", " . ($notices_options['pause'] == 'on' ? 'true' : 'false') . ");\n";
 		$output .= "tick_" . $name . '.Init(["' . get_seperated_notices('", "') . "\"]);\n";
 		$output .= "</script>" . "\n";
-
 	}
 	else {
 		$output  = '<marquee direction="' . $notices_options['direction'] . '" class="ticker" scrollamount="' . $notices_options['speed'] . '"' . ($notices_options['pause'] == 'on' ? ' onmouseover="this.stop()" onmouseout="this.start()">' : '>');
@@ -236,6 +262,7 @@ function notices_options_page()
 			'speed' => $_POST['speed'],
 			'pause' => $_POST['pause'],
 			'limit' => $_POST['limit'],
+			'recent' => $_POST['recent'],
 			'direction' => $_POST['direction']			
 		);
 		update_option('notices_widget', $options_update);
@@ -275,6 +302,15 @@ function notices_options_page()
 					<td>Pause:</td>
 					<td><input type="checkbox" name="pause" <?php echo $notices_options['pause'] == 'on' ? 'checked' : ''; ?> /></td>
 					<td><small>Pause the ticker's scrolling on <code>mouseover</code>.</small></td>
+				</tr>
+				<tr>
+					<td>Include Recent Posts:</td>
+					<td>
+						<input type="radio" name="recent" value="N" <?php echo $notices_options['recent'] == 'N' ? 'checked' : ''; ?> /> Recent posts not included,<br />
+						<input type="radio" name="recent" value="B" <?php echo $notices_options['recent'] == 'B' ? 'checked' : ''; ?> /> Recent posts shown before notices, or<br />
+						<input type="radio" name="recent" value="A" <?php echo $notices_options['recent'] == 'A' ? 'checked' : ''; ?> /> Recent posts shown after notices.
+					</td>
+					<td><small>Includes recent posts (number from <i>limit</i> above) in notices.</small></td>
 				</tr>
 				<tr>
 					<td>Credit:</td>
