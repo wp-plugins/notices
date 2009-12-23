@@ -4,7 +4,7 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		3.0
+	Version:		5.0
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
@@ -12,6 +12,8 @@
 					2.0 - Now has fade-in-out efect - many thanks to Alex Gonzalez-Vinas for the idea and motivation.
 					2.1 - Javascript uses an object to allow multiple tickers (i.e. widget and paged).
 					3.0 - Option to 'tick' recent posts.
+					4.0 - Editable start date (allows future notices).  Thanks to Jackey van Melis for the idea.
+					5.0 - Add support for notices from a Twitter feed (requires Twitter on Publish plug-in).
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -25,6 +27,7 @@ if(!is_array($notices_options)) {
 		'speed' => '4',
 		'pause' => 'on',
 		'limit' => '3',
+		'twitter' => 'off',
 		'direction' => 'LEFT'
 	);
 	update_option('notices_widget', $notices_options);
@@ -73,10 +76,10 @@ function get_seperated_notices($sep)
 	$output = '';
 	$dots = false;
 
-	if($notices_options['recent'] == 'B') $output .= get_recent_posts($sep);
+	if($notices_options['recent'] == 'B') $output = get_recent_posts($sep);
 	if(!empty($output)) $dots = true;
 
-	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) order by notice_date DESC limit {$limit}");
+	$notices = $wpdb->get_results("select notice from {$table_prefix}notices where active = 'Y' and (adddate(notice_date, valid) > now() or valid = 0) and notice_date <= now() order by notice_date DESC limit {$limit}");
 	if($notices) {
 		foreach($notices as $notice) {
 			if($dots) $output .= $sep;
@@ -88,6 +91,13 @@ function get_seperated_notices($sep)
 	if($notices_options['recent'] == 'A') {
 		$posts = get_recent_posts($sep);
 		if(!empty($output) && !empty($posts)) $output .= $sep . $posts;
+		else if(empty($output)) $output = $posts;
+	}
+
+	if($notices_options['twitter'] == 'on' && function_exists('get_twitter_data_for_notices')) {
+		$tweets = get_twitter_data_for_notices($sep, $notices_options['limit']);
+		if(!empty($output) && !empty($tweets)) $output .= $sep . $tweets;
+		else if(empty($output)) $output = $tweets;
 	}
 
 	return $output;
@@ -166,18 +176,20 @@ function manage_notices()
 
 	global $wpdb, $table_prefix;
 
+	$months = array('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
+
 	$msg = '';
 
 	if(isset($_POST['submit'])) {
 		$msg = 'Notice added';
-		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (now(), '" . $_POST['notice'] . "', '" . $_POST['valid'] . "')");
+		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (str_to_date(concat('" . $_POST['day'] . ' ' . $_POST['month'] . ' ' . $_POST['year'] . " ', curtime()), '%e %c %Y %T'), '" . $_POST['notice'] . "', '" . $_POST['valid'] . "')");
 	}
 
 	if(!empty($_GET['act'])) {
 		switch($_GET['act']) {
 		case 'update':
 			$msg = "Notice {$_GET['id']} updated";
-			$wpdb->query("update {$table_prefix}notices set notice_date = now(), notice = '" . $_GET['notice'] . "', active = '" . ($_GET['active'] == 'true' ? 'Y' : 'N') . "', valid = '" . $_GET['valid'] . "' where notice_ID = '{$_GET['id']}'");
+			$wpdb->query("update {$table_prefix}notices set notice_date = str_to_date(concat('" . $_GET['day'] . ' ' . $_GET['month'] . ' ' . $_GET['year'] . " ', curtime()), '%e %c %Y %T'), notice = '" . $_GET['notice'] . "', active = '" . ($_GET['active'] == 'true' ? 'Y' : 'N') . "', valid = '" . $_GET['valid'] . "' where notice_ID = '{$_GET['id']}'");
 			break;
 
 		case 'delete':
@@ -194,7 +206,7 @@ function manage_notices()
 		function set_input_values(num)
 		{
 			var h = document.getElementById('href-' + num);
-			h.href = h.href + '&notice=' + document.getElementById('notice-' + num).value + '&active=' + document.getElementById('active-' + num).checked + '&valid=' + document.getElementById('valid-' + num).value;
+			h.href = h.href + '&notice=' + document.getElementById('notice-' + num).value + '&active=' + document.getElementById('active-' + num).checked + '&valid=' + document.getElementById('valid-' + num).value + '&day=' + document.getElementById('day-' + num).value + '&month=' + document.getElementById('month-' + num).value + '&year=' + document.getElementById('year-' + num).value;
 		}
 	</script>
 
@@ -207,8 +219,25 @@ function manage_notices()
 			<table class='form-table'>
 				<tr>
 					<td>Notice:</td>
-					<td><input type="text" name="notice" size='75' maxlength="500" /></td>
-					<td>Valid Days:</td>
+					<td><input type="text" name="notice" size='60' maxlength="500" /></td>
+					<td>
+						<select name="day">
+							<?php
+								for($j = 1; $j < 32; $j++) {
+									printf('<option value="%d" %s>%d</option>', $j, (date('j') == $j ? 'selected' : ''), $j);
+								}
+							?>
+						</select>
+						<select name="month">
+							<?php
+								for($j = 1; $j < 13; $j++) {
+									printf('<option value="%d" %s>%s</option>', $j, (date('n') == $j ? 'selected' : ''), $months[$j - 1]);
+								}
+							?>
+						</select>
+						<input type="text" value="<?php echo date('Y'); ?>" name="year" size="5" maxlength="4" />
+					</td>
+					<td>Valid for days:</td>
 					<td><input type="text" name="valid" size='3' value='3' /></td>
 					<td><input type="submit" name="submit" value="Add Notice" class="button-secondary" style="float: right;"/></td>
 				</tr>
@@ -218,17 +247,37 @@ function manage_notices()
 		<h3>Manage Notices</h3>
 		<table class='widefat'>
 			<thead>
-				<tr><th>ID</th><th>Notice</th><th style="text-align: center;">Active</th><th>Date</th><th>Valid</th><th colspan=2 style="text-align: center;">Action</th></tr>
+				<tr><th>ID</th><th>Notice</th><th style="text-align: center;">Active</th><th>Start Date</th><th>Valid for</th><th colspan=2 style="text-align: center;">Action</th></tr>
 			</thead>
 			<tbody><?php
-				$notices = $wpdb->get_results("select notice_ID ID, notice, notice_date, active, valid from {$table_prefix}notices order by notice_date DESC");
+				$notices = $wpdb->get_results("select	notice_ID ID,
+														notice,
+														year(notice_date) year,
+														month(notice_date) month,
+														day(notice_date) day,
+														active,
+														valid
+												from	{$table_prefix}notices
+												order by notice_date DESC");
 				$i = 0;
 				foreach($notices as $notice) {
 					printf('<tr%s>', ($i % 2 == 0 ? " class='alternate'" : ""));
 					printf('<td>%s.</td>', $notice->ID);
 					printf('<td><input type="text" value="%s" id="notice-%s" size="58" maxlength="500" /></td>', $notice->notice, $i);
 					printf('<td style="text-align: center;"><input type="checkbox" id="active-%s" %s /></td>', $i, ($notice->active == 'Y' ? 'checked' : ''));
-					printf('<td>%s</td>', mysql2date(get_option('date_format'), $notice->notice_date));
+					printf('<td>');
+					printf('<select id="day-%s">', $i);
+						for($j = 1; $j < 32; $j++) {
+							printf('<option value="%d" %s>%d</option>', $j, ($notice->day == $j ? 'selected' : ''), $j);
+						}
+					?></select><?php
+					printf('<select id="month-%s">', $i);
+						for($j = 1; $j < 13; $j++) {
+							printf('<option value="%d" %s>%s</option>', $j, ($notice->month == $j ? 'selected' : ''), $months[$j - 1]);
+						}
+					?></select><?php
+					printf('<input type="text" value="%s" id="year-%s" size="5" maxlength="4" />', $notice->year, $i);
+					printf('</td>');
 					printf('<td><input type="text" value="%s" id="valid-%s" size="3" maxlength="2" /> days</td>', $notice->valid, $i);
 					printf('<td><a href="?page=manage-notices&act=update&id=%s" class="edit" onclick="set_input_values(%2$s);" id="href-%2$s">Update</a></td>', $notice->ID, $i);
 					printf('<td><a href="?page=manage-notices&act=delete&id=%s" class="delete">Delete</a></td>', $notice->ID);
@@ -263,6 +312,7 @@ function notices_options_page()
 			'pause' => $_POST['pause'],
 			'limit' => $_POST['limit'],
 			'recent' => $_POST['recent'],
+			'twitter' => ($_POST['twitter'] == 'on' ? 'on' : 'off'),
 			'direction' => $_POST['direction']			
 		);
 		update_option('notices_widget', $options_update);
@@ -311,6 +361,19 @@ function notices_options_page()
 						<input type="radio" name="recent" value="A" <?php echo $notices_options['recent'] == 'A' ? 'checked' : ''; ?> /> Recent posts shown after notices.
 					</td>
 					<td><small>Includes recent posts (number from <i>limit</i> above) in notices.</small></td>
+				</tr>
+				<tr>
+					<td>Include Twitter feed:</td>
+					<td>
+						<?php if(file_exists(ABSPATH . '/wp-content/plugins/twitter-on-publish/twitter-on-publish.php')) { ?>
+							<input type="checkbox" name="twitter" <?php echo $notices_options['twitter'] == 'on' ? 'checked' : ''; ?> />
+						<?php } ?>
+					</td>
+					<td><small>Includes <a href="http://twitter.com/" target="_blank">Twitter</a> feed in notices.
+						<?php if(!file_exists(ABSPATH . '/wp-content/plugins/twitter-on-publish/twitter-on-publish.php')) { ?>
+							(requires <a href='http://www.sterling-adventures.co.uk/blog/2009/05/01/simple-wordpress-twitter-plugin/' title='Twitter Plug-in'>Simple WordPress Twitter Plug-in</a>)
+						<?php } ?>
+					</small></td>
 				</tr>
 				<tr>
 					<td>Credit:</td>
