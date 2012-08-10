@@ -5,7 +5,7 @@ Author URI: http://www.sterling-adventures.co.uk/
 Plugin URI: http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 Tags: notes, notices, message, ticker
 Requires at least: 2.5
-Tested up to: 2.8
+Tested up to: 3.4.1
 Stable tag: trunk
 
 This plug-in allows short notices to be displayed on your blog.
