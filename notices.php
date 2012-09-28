@@ -4,7 +4,7 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		5.0
+	Version:		6.0
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
@@ -14,6 +14,8 @@
 					3.0 - Option to 'tick' recent posts.
 					4.0 - Editable start date (allows future notices).  Thanks to Jackey van Melis for the idea.
 					5.0 - Add support for notices from a Twitter feed (requires Twitter on Publish plug-in).
+					5.1 - Javascript type attribute.
+					6.0 - Security enhancements for XSS attacks.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -111,7 +113,7 @@ function get_ticker_content($name)
 
 	if($notices_options['direction'] == 'FADE') {
 		$output  = "<div id='$name' class='ticker'></div>\n";
-		$output .= "<script language='Javascript'>\n";
+		$output .= "<script  type='text/javascript' language='Javascript'>\n";
 		$output .= "tick_" . $name . " = new NoticesTicker('" . $name . "', " . (int)($notices_options['speed']) * 1000 . ", " . ($notices_options['pause'] == 'on' ? 'true' : 'false') . ");\n";
 		$output .= "tick_" . $name . '.Init(["' . get_seperated_notices('", "') . "\"]);\n";
 		$output .= "</script>" . "\n";
@@ -174,22 +176,33 @@ function manage_notices()
 {
 	if(!current_user_can('manage_notices')) wp_die(__('Cheatin&#8217; uh?'));
 
-	global $wpdb, $table_prefix;
+	global $wpdb, $table_prefix, $allowedtags;
 
 	$months = array('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
 
 	$msg = '';
 
 	if(isset($_POST['submit'])) {
+		check_admin_referer('notices-update');
+		$notice = wp_kses($_POST['notice'], $allowedtags);
+		$notice = mysql_real_escape_string(stripslashes($_POST['notice']));
+		$_POST['valid'] = mysql_real_escape_string(stripslashes($_POST['valid']));
+
 		$msg = 'Notice added';
-		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (str_to_date(concat('" . $_POST['day'] . ' ' . $_POST['month'] . ' ' . $_POST['year'] . " ', curtime()), '%e %c %Y %T'), '" . $_POST['notice'] . "', '" . $_POST['valid'] . "')");
+		$wpdb->query("insert into {$table_prefix}notices (notice_date, notice, valid) values (str_to_date(concat('" . $_POST['day'] . ' ' . $_POST['month'] . ' ' . $_POST['year'] . " ', curtime()), '%e %c %Y %T'), '" . $notice . "', '" . $_POST['valid'] . "')");
 	}
 
 	if(!empty($_GET['act'])) {
+		check_admin_referer('notices-update');
+		$notice = wp_kses($_GET['notice'], $allowedtags);
+		$notice = mysql_real_escape_string(stripslashes($_GET['notice']));
+		$_GET['id'] = mysql_real_escape_string(stripslashes($_GET['id']));
+
 		switch($_GET['act']) {
 		case 'update':
 			$msg = "Notice {$_GET['id']} updated";
-			$wpdb->query("update {$table_prefix}notices set notice_date = str_to_date(concat('" . $_GET['day'] . ' ' . $_GET['month'] . ' ' . $_GET['year'] . " ', curtime()), '%e %c %Y %T'), notice = '" . $_GET['notice'] . "', active = '" . ($_GET['active'] == 'true' ? 'Y' : 'N') . "', valid = '" . $_GET['valid'] . "' where notice_ID = '{$_GET['id']}'");
+			$_GET['valid'] = mysql_real_escape_string(stripslashes($_GET['valid']));
+			$wpdb->query("update {$table_prefix}notices set notice_date = str_to_date(concat('" . $_GET['day'] . ' ' . $_GET['month'] . ' ' . $_GET['year'] . " ', curtime()), '%e %c %Y %T'), notice = '" . $notice . "', active = '" . ($_GET['active'] == 'true' ? 'Y' : 'N') . "', valid = '" . $_GET['valid'] . "' where notice_ID = '{$_GET['id']}'");
 			break;
 
 		case 'delete':
@@ -202,9 +215,8 @@ function manage_notices()
 	// Output message.
 	if(!empty($msg)) echo "<div id='message' class='updated fade'><p>{$msg}.</p></div>";
 ?>
-	<script language="Javascript">
-		function set_input_values(num)
-		{
+	<script  type="text/javascript" language="Javascript">
+		function set_input_values(num) {
 			var h = document.getElementById('href-' + num);
 			h.href = h.href + '&notice=' + document.getElementById('notice-' + num).value + '&active=' + document.getElementById('active-' + num).checked + '&valid=' + document.getElementById('valid-' + num).value + '&day=' + document.getElementById('day-' + num).value + '&month=' + document.getElementById('month-' + num).value + '&year=' + document.getElementById('year-' + num).value;
 		}
@@ -242,6 +254,10 @@ function manage_notices()
 					<td><input type="submit" name="submit" value="Add Notice" class="button-secondary" style="float: right;"/></td>
 				</tr>
 			</table>
+
+			<?php
+				if(function_exists('wp_nonce_field')) wp_nonce_field('notices-update');
+			?>
 		</form>
 
 		<h3>Manage Notices</h3>
@@ -381,7 +397,7 @@ function notices_options_page()
 					<td><small>Includes an invisible credit to <a href='http://www.sterling-adventures.co.uk/' title='Sterling Adventures'>Sterling Adventures</a></small></td>
 				</tr>
 			</table>
-			<p class="submit"><input type="submit" name="option-submit" value="Update Notice Options" /></p>
+			<p class="submit"><input type="submit" class="button-primary" name="option-submit" value="Update Notice Options" /></p>
 		</form>
 	</div>
 <?php
