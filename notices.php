@@ -4,7 +4,7 @@
 	Plugin URI:		http://www.sterling-adventures.co.uk/blog/2008/06/01/notices-ticker-plugin/
 	Description:	A plugin which adds a widget with a scrolling "ticker" of notices.
 	Author:			Peter Sterling
-	Version:		6.0
+	Version:		6.1
 	Changes:		0.1 - Initial version.
 					0.2 - Ticker's "scrollamount" option set, thanks to Klaus.
 					0.3 - Error with management menu access fixed.
@@ -16,6 +16,7 @@
 					5.0 - Add support for notices from a Twitter feed (requires Twitter on Publish plug-in).
 					5.1 - Javascript type attribute.
 					6.0 - Security enhancements for XSS attacks.
+					6.1 - Minor fix to v6.0 for updating data.
 	Author URI:		http://www.sterling-adventures.co.uk/
 */
 
@@ -183,7 +184,9 @@ function manage_notices()
 	$msg = '';
 
 	if(isset($_POST['submit'])) {
-		check_admin_referer('notices-update');
+		if(function_exists('wp_create_nonce')) {
+			if(!wp_verify_nonce($_POST['notices_noncename'], 'notices-update')) wp_die(__('Cheatin&#8217; uh?'));
+		}
 		$notice = wp_kses($_POST['notice'], $allowedtags);
 		$notice = mysql_real_escape_string(stripslashes($_POST['notice']));
 		$_POST['valid'] = mysql_real_escape_string(stripslashes($_POST['valid']));
@@ -193,7 +196,9 @@ function manage_notices()
 	}
 
 	if(!empty($_GET['act'])) {
-		check_admin_referer('notices-update');
+		if(function_exists('wp_create_nonce')) {
+			if(!wp_verify_nonce($_GET['nonce'], 'notices-update')) wp_die(__('Cheatin&#8217; uh?'));
+		}
 		$notice = wp_kses($_GET['notice'], $allowedtags);
 		$notice = mysql_real_escape_string(stripslashes($_GET['notice']));
 		$_GET['id'] = mysql_real_escape_string(stripslashes($_GET['id']));
@@ -256,7 +261,11 @@ function manage_notices()
 			</table>
 
 			<?php
-				if(function_exists('wp_nonce_field')) wp_nonce_field('notices-update');
+				$notices_nonce = '';
+				if(function_exists('wp_create_nonce')) {
+					$notices_nonce = wp_create_nonce('notices-update');
+					printf('<input type="hidden" name="notices_noncename" value="%s" />', $notices_nonce);
+				}
 			?>
 		</form>
 
@@ -295,8 +304,8 @@ function manage_notices()
 					printf('<input type="text" value="%s" id="year-%s" size="5" maxlength="4" />', $notice->year, $i);
 					printf('</td>');
 					printf('<td><input type="text" value="%s" id="valid-%s" size="3" maxlength="2" /> days</td>', $notice->valid, $i);
-					printf('<td><a href="?page=manage-notices&act=update&id=%s" class="edit" onclick="set_input_values(%2$s);" id="href-%2$s">Update</a></td>', $notice->ID, $i);
-					printf('<td><a href="?page=manage-notices&act=delete&id=%s" class="delete">Delete</a></td>', $notice->ID);
+					printf('<td><a href="?page=manage-notices&act=update&id=%1$s&nonce=%3$s" class="edit" onclick="set_input_values(%2$s);" id="href-%2$s">Update</a></td>', $notice->ID, $i, $notices_nonce);
+					printf('<td><a href="?page=manage-notices&act=delete&id=%s&nonce=%s" class="delete">Delete</a></td>', $notice->ID, $notices_nonce);
 					printf("</tr>\n");
 					$i++;
 				}
